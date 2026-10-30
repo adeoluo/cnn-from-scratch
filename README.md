@@ -62,6 +62,26 @@ regression on the same pixels, a gap of nearly 60 points that exists entirely be
 moves and only convolution is translation-invariant. The linear model sits near the 0.33 chance
 level because no fixed pixel is reliably informative.
 
+### Scale
+
+`benchmarks/scale.py` trains one small CNN, then runs the from-scratch forward pass over
+progressively larger synthetic image sets and records wall-clock time, inference throughput,
+peak memory (`tracemalloc`), and held-out accuracy. Timing is measured without tracemalloc
+(which slows every allocation); peak memory is traced separately around the dataset plus a
+single forward pass, which is faithful because evaluation processes one image at a time.
+Throughput is roughly flat near 370 to 415 images per second and peak memory grows linearly
+with the image set. Run with `uv run python benchmarks/scale.py`.
+
+| Images | Seconds | Throughput (img/sec) | Peak memory (MiB) | Accuracy |
+|---:|---:|---:|---:|---:|
+| 750 | 2.40 | 312.6 | 1.89 | 0.972 |
+| 1500 | 3.62 | 413.9 | 3.77 | 0.981 |
+| 3000 | 7.22 | 415.3 | 7.52 | 0.981 |
+| 6000 | 16.52 | 363.2 | 15.04 | 0.983 |
+
+Honest caveat: the data is synthetic, the network is deliberately small, and this pure-Python
+implementation is not benchmarked against compiled tensor libraries.
+
 ## Demonstration
 
 ```text
