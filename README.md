@@ -152,6 +152,12 @@ Held-out evaluation with per-class results.
   <img src="docs/demo/evaluate.gif" alt="Held-out evaluation with per-class results" width="860">
 </p>
 
+The HTTP service: health with the class names, then held-out evaluation.
+
+<p align="center">
+  <img src="docs/demo/http.gif" alt="The HTTP service: health with the class names, then held-out evaluation" width="860">
+</p>
+
 ## Design decisions
 
 - **Explicit per-layer backward, not a general autodiff graph** - for a convolutional network,
