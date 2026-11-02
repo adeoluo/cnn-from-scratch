@@ -5,57 +5,43 @@ flowchart LR
     classDef control  fill:#0EA5E9,stroke:#1E293B,color:#ffffff,stroke-width:1px;
     classDef obs      fill:#CBD5E1,stroke:#1E293B,color:#1E293B,stroke-width:1px;
 
-    Client(["HTTP client"]):::edge
-    CLI(["CLI<br/>train, evaluate, serve"]):::edge
-
-    subgraph Interfaces["Interfaces (stdlib HTTP service)"]
+    subgraph Interfaces["Interfaces"]
         direction TB
-        Router["Router<br/>/health, /ready, /metrics,<br/>/classify, /evaluate"]:::edge
+        Client([HTTP client]):::edge
+        CLI(["CLI<br/>train, evaluate, serve"]):::edge
+        Router["Router<br/>/classify, /evaluate"]:::edge
         Validate["Validation<br/>8x8 numeric image"]:::control
+        CLI ~~~ Client --> Router --> Validate
     end
 
-    subgraph Training["Training (once at startup)"]
+    subgraph State["Data and state (seeded)"]
         direction TB
-        Loss["Cross-entropy gradient<br/>on softmax logits"]:::core
-        Adam["Adam optimizer<br/>from scratch"]:::control
-    end
-
-    subgraph Net["Sequential CNN (forward caches, reverse backward)"]
-        direction TB
-        Conv["Conv2D + ReLU<br/>6 filters, 3x3, He init"]:::core
-        Pool["MaxPool2D<br/>argmax cached"]:::core
-        Dense["Flatten + Dense<br/>logits per class"]:::core
-    end
-
-    subgraph State["Data and state (in memory, seeded)"]
-        direction TB
-        TrainData[("Training images<br/>oriented strokes, noise")]:::data
+        TrainData[("Training images<br/>oriented strokes")]:::data
         TestData[("Test images<br/>disjoint seed")]:::data
-        Params[("Parameters<br/>conv and dense weights + grads")]:::data
+        Params[("Parameters<br/>weights + grads")]:::data
+        TrainData ~~~ TestData ~~~ Params
     end
 
-    subgraph Evaluation["Evaluation and outputs"]
+    subgraph Core["Sequential CNN"]
         direction TB
-        Probs["Prediction<br/>class + softmax probabilities"]:::obs
-        Report["EvalReport<br/>accuracy, confusion matrix"]:::obs
+        Conv["Conv2D + ReLU<br/>6 filters, 3x3"]:::core
+        Pool["MaxPool2D<br/>argmax cached"]:::core
+        Dense["Flatten + Dense<br/>class logits"]:::core
+        Loss["Cross-entropy<br/>gradient, backward"]:::core
+        Adam["Adam optimizer<br/>from scratch"]:::control
+        Conv --> Pool --> Dense --> Loss --> Adam
+    end
+
+    subgraph Obs["Evaluation and outputs"]
+        direction TB
+        Probs["Prediction<br/>softmax probabilities"]:::obs
+        Report["EvalReport<br/>accuracy, confusion"]:::obs
         Baseline["Logistic regression<br/>linear baseline"]:::obs
         Metrics["ServiceMetrics<br/>Prometheus"]:::obs
+        Probs ~~~ Report
+        Baseline ~~~ Metrics
     end
 
-    Client -->|JSON image| Router
-    CLI -->|serve| Router
-    CLI -->|train, evaluate| Loss
-    Router --> Validate
-    Validate -->|image| Conv
-    Loss -->|backward| Conv
-    Adam -.->|step| Params
-    Conv --> Pool
-    Pool --> Dense
-    Conv -.-> Params
-    Dense -.-> Params
-    Loss -.->|reads| TrainData
-    Dense -->|logits| Probs
-    Dense -->|test logits| Report
-    Report -.->|reads| TestData
-    Baseline -.->|reads| TestData
-    Router -.-> Metrics
+    Interfaces -->|8x8 image| Core
+    State -.->|images, weights| Core
+    Core -->|logits| Obs
