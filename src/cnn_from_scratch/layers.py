@@ -3,14 +3,17 @@
 Rather than a general autodiff graph, each layer implements ``forward`` and
 ``backward`` directly, which is the clearest way to show how gradients flow
 through a convolutional network. A layer caches whatever its backward pass needs
-during the forward pass. Everything operates on nested Python lists; there is no
-NumPy and no other numerical library. The correctness of every backward pass is
-checked against finite differences in the test suite.
+during the forward pass. The arithmetic runs on numpy arrays: convolution is
+written as im2col (every receptive field laid out as a column) followed by one
+matrix product, and its backward pass scatters the column gradients back onto the
+image. The correctness of every backward pass is checked against finite
+differences in the test suite.
 
 Shapes
 ------
 Images are ``(channels, height, width)``. Convolution and pooling preserve that
-layout; :class:`Flatten` turns it into a vector for the dense head.
+layout; :class:`Flatten` turns it into a vector for the dense head. Layers accept
+nested lists or arrays and return arrays.
 """
 
 from __future__ import annotations
@@ -19,8 +22,17 @@ import math
 import random
 from typing import Any, Protocol
 
+import numpy as np
+import numpy.typing as npt
+from numpy.lib.stride_tricks import sliding_window_view
+
+Array = npt.NDArray[np.float64]
 Vector = list[float]
 Image = list[list[list[float]]]  # (channels, height, width)
+
+
+def as_array(x: object) -> Array:
+    return np.asarray(x, dtype=np.float64)
 
 
 class Layer(Protocol):
@@ -32,18 +44,24 @@ class Layer(Protocol):
 
 
 class Param:
-    """A trainable tensor and its gradient, stored as flat lists with a shape."""
+    """A trainable tensor and its gradient, stored as flat arrays with a shape."""
 
     __slots__ = ("grad", "shape", "values")
 
     def __init__(self, values: list[float], shape: tuple[int, ...]) -> None:
-        self.values = values
+        self.values: Array = np.asarray(values, dtype=np.float64)
         self.shape = shape
-        self.grad = [0.0] * len(values)
+        self.grad: Array = np.zeros_like(self.values)
 
     def zero_grad(self) -> None:
-        for i in range(len(self.grad)):
-            self.grad[i] = 0.0
+        self.grad.fill(0.0)
+
+    def view(self) -> Array:
+        """The values reshaped to ``shape`` (a view: in-place updates show through)."""
+        return self.values.reshape(self.shape)
+
+    def grad_view(self) -> Array:
+        return self.grad.reshape(self.shape)
 
 
 def _he_scale(fan_in: int) -> float:
@@ -69,69 +87,40 @@ class Conv2D:
         w = [rng.gauss(0.0, scale) for _ in range(out_channels * fan_in)]
         self.weight = Param(w, (out_channels, in_channels, kernel, kernel))
         self.bias = Param([0.0] * out_channels, (out_channels,))
-        self._input: Image | None = None
+        self._columns: Array | None = None
+        self._in_shape: tuple[int, int, int] | None = None
 
     def parameters(self) -> list[Param]:
         return [self.weight, self.bias]
 
-    def _w(self, oc: int, ic: int, i: int, j: int) -> float:
+    def forward(self, x: object) -> Array:
+        image = as_array(x)
+        c_in, h, w = image.shape
         k = self.kernel
-        return self.weight.values[((oc * self.in_channels + ic) * k + i) * k + j]
+        out_h, out_w = h - k + 1, w - k + 1
+        # (c_in, out_h, out_w, k, k) windows -> columns of shape (c_in*k*k, out_h*out_w).
+        windows = sliding_window_view(image, (k, k), axis=(1, 2))
+        columns = windows.transpose(0, 3, 4, 1, 2).reshape(c_in * k * k, out_h * out_w)
+        self._columns = columns
+        self._in_shape = (c_in, h, w)
+        weights = self.weight.values.reshape(self.out_channels, c_in * k * k)
+        out = weights @ columns + self.bias.values[:, None]
+        return out.reshape(self.out_channels, out_h, out_w)
 
-    def forward(self, x: Image) -> Image:
-        self._input = x
-        c_in = len(x)
-        h = len(x[0])
-        w = len(x[0][0])
+    def backward(self, grad: object) -> Array:
+        assert self._columns is not None and self._in_shape is not None
+        c_in, h, w = self._in_shape
         k = self.kernel
-        out_h = h - k + 1
-        out_w = w - k + 1
-        out: Image = [[[0.0] * out_w for _ in range(out_h)] for _ in range(self.out_channels)]
-        for oc in range(self.out_channels):
-            bias = self.bias.values[oc]
-            out_c = out[oc]
-            for oi in range(out_h):
-                for oj in range(out_w):
-                    acc = bias
-                    for ic in range(c_in):
-                        xic = x[ic]
-                        for di in range(k):
-                            xrow = xic[oi + di]
-                            for dj in range(k):
-                                acc += self._w(oc, ic, di, dj) * xrow[oj + dj]
-                    out_c[oi][oj] = acc
-        return out
-
-    def backward(self, grad: Image) -> Image:
-        assert self._input is not None
-        x = self._input
-        c_in = len(x)
-        h = len(x[0])
-        w = len(x[0][0])
-        k = self.kernel
-        out_h = h - k + 1
-        out_w = w - k + 1
-        dx: Image = [[[0.0] * w for _ in range(h)] for _ in range(c_in)]
-        for oc in range(self.out_channels):
-            gc = grad[oc]
-            base = oc * self.in_channels
-            for oi in range(out_h):
-                for oj in range(out_w):
-                    g = gc[oi][oj]
-                    if g == 0.0:
-                        continue
-                    self.bias.grad[oc] += g
-                    for ic in range(c_in):
-                        xic = x[ic]
-                        dxic = dx[ic]
-                        widx0 = (base + ic) * k
-                        for di in range(k):
-                            xrow = xic[oi + di]
-                            dxrow = dxic[oi + di]
-                            wrow = (widx0 + di) * k
-                            for dj in range(k):
-                                self.weight.grad[wrow + dj] += g * xrow[oj + dj]
-                                dxrow[oj + dj] += g * self.weight.values[wrow + dj]
+        out_h, out_w = h - k + 1, w - k + 1
+        g = as_array(grad).reshape(self.out_channels, out_h * out_w)
+        self.bias.grad += g.sum(axis=1)
+        self.weight.grad += (g @ self._columns.T).reshape(-1)
+        weights = self.weight.values.reshape(self.out_channels, c_in * k * k)
+        d_columns = (weights.T @ g).reshape(c_in, k, k, out_h, out_w)
+        dx = np.zeros((c_in, h, w))
+        for di in range(k):
+            for dj in range(k):
+                dx[:, di : di + out_h, dj : dj + out_w] += d_columns[:, di, dj]
         return dx
 
 
@@ -139,22 +128,19 @@ class ReLU:
     """Rectified linear activation over an image or a vector."""
 
     def __init__(self) -> None:
-        self._mask: list[float] | None = None
-        self._shape: tuple[int, ...] | None = None
+        self._mask: Array | None = None
 
     def parameters(self) -> list[Param]:
         return []
 
-    def forward(self, x: object) -> object:
-        flat, shape = _flatten_any(x)
-        self._mask = [1.0 if v > 0 else 0.0 for v in flat]
-        self._shape = shape
-        return _unflatten([v if v > 0 else 0.0 for v in flat], shape)
+    def forward(self, x: object) -> Array:
+        values = as_array(x)
+        self._mask = (values > 0).astype(np.float64)
+        return values * self._mask
 
-    def backward(self, grad: object) -> object:
-        assert self._mask is not None and self._shape is not None
-        gflat, _ = _flatten_any(grad)
-        return _unflatten([g * m for g, m in zip(gflat, self._mask, strict=True)], self._shape)
+    def backward(self, grad: object) -> Array:
+        assert self._mask is not None
+        return as_array(grad) * self._mask
 
 
 class MaxPool2D:
@@ -162,46 +148,42 @@ class MaxPool2D:
 
     def __init__(self, size: int = 2) -> None:
         self.size = size
-        self._argmax: list[tuple[int, int, int, int]] | None = None
+        self._argmax: npt.NDArray[np.intp] | None = None
         self._in_shape: tuple[int, int, int] | None = None
 
     def parameters(self) -> list[Param]:
         return []
 
-    def forward(self, x: Image) -> Image:
-        c = len(x)
-        h = len(x[0])
-        w = len(x[0][0])
+    def forward(self, x: object) -> Array:
+        image = as_array(x)
+        c, h, w = image.shape
         s = self.size
-        out_h = h // s
-        out_w = w // s
+        out_h, out_w = h // s, w // s
         self._in_shape = (c, h, w)
-        argmax: list[tuple[int, int, int, int]] = []
-        out: Image = [[[0.0] * out_w for _ in range(out_h)] for _ in range(c)]
-        for ch in range(c):
-            for oi in range(out_h):
-                for oj in range(out_w):
-                    best = -math.inf
-                    bi = bj = 0
-                    for di in range(s):
-                        for dj in range(s):
-                            v = x[ch][oi * s + di][oj * s + dj]
-                            if v > best:
-                                best = v
-                                bi, bj = oi * s + di, oj * s + dj
-                    out[ch][oi][oj] = best
-                    argmax.append((ch, oi * out_w + oj, bi, bj))
-        self._argmax = argmax
+        # (c, out_h, out_w, s*s) windows in row-major order, so argmax picks the first
+        # maximum exactly as a row-by-row scan with a strict ">" would.
+        windows = (
+            image[:, : out_h * s, : out_w * s]
+            .reshape(c, out_h, s, out_w, s)
+            .transpose(0, 1, 3, 2, 4)
+            .reshape(c, out_h, out_w, s * s)
+        )
+        self._argmax = windows.argmax(axis=-1)
+        out: Array = np.take_along_axis(windows, self._argmax[..., None], axis=-1)[..., 0]
         return out
 
-    def backward(self, grad: Image) -> Image:
+    def backward(self, grad: object) -> Array:
         assert self._argmax is not None and self._in_shape is not None
         c, h, w = self._in_shape
-        out_w = w // self.size
-        dx: Image = [[[0.0] * w for _ in range(h)] for _ in range(c)]
-        for ch, flat_out, bi, bj in self._argmax:
-            oi, oj = divmod(flat_out, out_w)
-            dx[ch][bi][bj] += grad[ch][oi][oj]
+        s = self.size
+        out_h, out_w = h // s, w // s
+        g = as_array(grad)
+        di, dj = np.divmod(self._argmax, s)
+        rows = np.arange(out_h)[None, :, None] * s + di
+        cols = np.arange(out_w)[None, None, :] * s + dj
+        channels = np.broadcast_to(np.arange(c)[:, None, None], rows.shape)
+        dx = np.zeros((c, h, w))
+        np.add.at(dx, (channels, rows, cols), g)
         return dx
 
 
@@ -209,29 +191,19 @@ class Flatten:
     """Reshape an image into a vector and back on the backward pass."""
 
     def __init__(self) -> None:
-        self._shape: tuple[int, int, int] | None = None
+        self._shape: tuple[int, ...] | None = None
 
     def parameters(self) -> list[Param]:
         return []
 
-    def forward(self, x: Image) -> Vector:
-        c = len(x)
-        h = len(x[0])
-        w = len(x[0][0])
-        self._shape = (c, h, w)
-        return [x[ch][i][j] for ch in range(c) for i in range(h) for j in range(w)]
+    def forward(self, x: object) -> Array:
+        image = as_array(x)
+        self._shape = image.shape
+        return image.reshape(-1)
 
-    def backward(self, grad: Vector) -> Image:
+    def backward(self, grad: object) -> Array:
         assert self._shape is not None
-        c, h, w = self._shape
-        out: Image = [[[0.0] * w for _ in range(h)] for _ in range(c)]
-        idx = 0
-        for ch in range(c):
-            for i in range(h):
-                for j in range(w):
-                    out[ch][i][j] = grad[idx]
-                    idx += 1
-        return out
+        return as_array(grad).reshape(self._shape)
 
 
 class Dense:
@@ -246,56 +218,21 @@ class Dense:
             (out_features, in_features),
         )
         self.bias = Param([0.0] * out_features, (out_features,))
-        self._input: Vector | None = None
+        self._input: Array | None = None
 
     def parameters(self) -> list[Param]:
         return [self.weight, self.bias]
 
-    def forward(self, x: Vector) -> Vector:
-        self._input = x
-        out = []
-        for o in range(self.out_features):
-            base = o * self.in_features
-            acc = self.bias.values[o]
-            for i in range(self.in_features):
-                acc += self.weight.values[base + i] * x[i]
-            out.append(acc)
-        return out
+    def forward(self, x: object) -> Array:
+        vector = as_array(x)
+        self._input = vector
+        result: Array = self.weight.view() @ vector + self.bias.values
+        return result
 
-    def backward(self, grad: Vector) -> Vector:
+    def backward(self, grad: object) -> Array:
         assert self._input is not None
-        x = self._input
-        dx = [0.0] * self.in_features
-        for o in range(self.out_features):
-            g = grad[o]
-            base = o * self.in_features
-            self.bias.grad[o] += g
-            for i in range(self.in_features):
-                self.weight.grad[base + i] += g * x[i]
-                dx[i] += g * self.weight.values[base + i]
-        return dx
-
-
-def _flatten_any(x: object) -> tuple[list[float], tuple[int, ...]]:
-    if isinstance(x, list) and x and isinstance(x[0], list):
-        img: Image = x
-        c = len(img)
-        h = len(img[0])
-        w = len(img[0][0])
-        return ([img[ch][i][j] for ch in range(c) for i in range(h) for j in range(w)], (c, h, w))
-    vec: Vector = x  # type: ignore[assignment]
-    return (list(vec), (len(vec),))
-
-
-def _unflatten(flat: list[float], shape: tuple[int, ...]) -> object:
-    if len(shape) == 1:
-        return flat
-    c, h, w = shape
-    out: Image = [[[0.0] * w for _ in range(h)] for _ in range(c)]
-    idx = 0
-    for ch in range(c):
-        for i in range(h):
-            for j in range(w):
-                out[ch][i][j] = flat[idx]
-                idx += 1
-    return out
+        g = as_array(grad)
+        self.bias.grad += g
+        self.weight.grad += np.outer(g, self._input).reshape(-1)
+        result: Array = self.weight.view().T @ g
+        return result

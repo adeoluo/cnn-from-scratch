@@ -14,7 +14,7 @@
 
 ## Out-of-scope / prohibited use
 - Not an image recognizer for real photographs; the task is synthetic shapes.
-- Not a performance reference; convolution in interpreted Python is slow by design.
+- Not a performance reference; convolution is im2col plus numpy, one image at a time.
 - The accuracy numbers describe a shape task and must not be cited as an image benchmark.
 
 ## Performance
@@ -24,7 +24,7 @@
 
 ## Limitations and failure modes
 - Tiny, single-block network on small synthetic images; no claims about scale or natural images.
-- Convolution in interpreted Python is slow; not a substitute for an optimized kernel.
+- Convolution runs one image at a time without batching or GPU support; not a substitute for an optimized kernel.
 
 ## Ethical considerations
 - No personal data, no network access, no external model. Inputs are synthetic grayscale images.

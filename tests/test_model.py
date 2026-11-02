@@ -27,15 +27,15 @@ def test_maxpool_halves_spatial_dims() -> None:
 def test_relu_zeroes_negatives() -> None:
     relu = ReLU()
     out = relu.forward([[[-1.0, 2.0], [3.0, -4.0]]])
-    assert out == [[[0.0, 2.0], [3.0, 0.0]]]
+    assert out.tolist() == [[[0.0, 2.0], [3.0, 0.0]]]
 
 
 def test_flatten_roundtrip_shape() -> None:
     flat = Flatten()
     vec = flat.forward([[[1.0, 2.0], [3.0, 4.0]]])
-    assert vec == [1.0, 2.0, 3.0, 4.0]
+    assert vec.tolist() == [1.0, 2.0, 3.0, 4.0]
     back = flat.backward([10.0, 20.0, 30.0, 40.0])
-    assert back == [[[10.0, 20.0], [30.0, 40.0]]]
+    assert back.tolist() == [[[10.0, 20.0], [30.0, 40.0]]]
 
 
 def test_dense_shapes() -> None:
@@ -76,7 +76,7 @@ def test_training_is_deterministic(small_task, small_cfg) -> None:  # type: igno
 
     a = train(small_task, small_cfg, TrainConfig(epochs=3, seed=0))
     b = train(small_task, small_cfg, TrainConfig(epochs=3, seed=0))
-    assert a.model.parameters()[0].values == b.model.parameters()[0].values
+    assert a.model.parameters()[0].values.tolist() == b.model.parameters()[0].values.tolist()
 
 
 def test_mean_confidence_in_range(trained, small_task) -> None:  # type: ignore[no-untyped-def]

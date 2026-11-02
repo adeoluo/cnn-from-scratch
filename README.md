@@ -69,23 +69,29 @@ level because no fixed pixel is reliably informative.
 
 ### Scale
 
-`benchmarks/scale.py` trains one small CNN, then runs the from-scratch forward pass over
+`benchmarks/scale.py` trains one small CNN, then runs the forward pass over
 progressively larger synthetic image sets and records wall-clock time, inference throughput,
 peak memory (`tracemalloc`), and held-out accuracy. Timing is measured without tracemalloc
 (which slows every allocation); peak memory is traced separately around the dataset plus a
 single forward pass, which is faithful because evaluation processes one image at a time.
-Throughput is roughly flat near 370 to 415 images per second and peak memory grows linearly
-with the image set. Run with `uv run python benchmarks/scale.py`.
+Throughput is flat at about 40,600 images per second and peak memory grows linearly with the
+image set. Run with `uv run python benchmarks/scale.py`.
 
 | Images | Seconds | Throughput (img/sec) | Peak memory (MiB) | Accuracy |
 |---:|---:|---:|---:|---:|
-| 750 | 2.40 | 312.6 | 1.89 | 0.972 |
-| 1500 | 3.62 | 413.9 | 3.77 | 0.981 |
-| 3000 | 7.22 | 415.3 | 7.52 | 0.981 |
-| 6000 | 16.52 | 363.2 | 15.04 | 0.983 |
+| 750 | 0.018 | 40,743 | 1.89 | 0.972 |
+| 1500 | 0.037 | 40,382 | 3.76 | 0.981 |
+| 3000 | 0.074 | 40,589 | 7.52 | 0.981 |
+| 6000 | 0.148 | 40,641 | 15.03 | 0.983 |
 
-Honest caveat: the data is synthetic, the network is deliberately small, and this Python
-implementation is not benchmarked against compiled tensor libraries.
+The layers used to loop over nested Python lists. They now run on numpy arrays, with the
+convolution written as im2col (every receptive field laid out as a column, then one matrix
+product) and its backward pass scattering column gradients back onto the image; the forward and
+backward passes are still written by hand and still checked against finite differences. Measured
+back to back with the previous version, inference went from about 3,310 to 40,640 images per
+second (12.3x) and the 15-epoch training run from 0.8 s to 0.17 s, with the same accuracy at every
+size; logits agree with the old code to within 1e-15. The data is synthetic and the network is
+deliberately small, and it is not compared against compiled tensor libraries.
 
 ### Evaluation
 
@@ -198,8 +204,9 @@ Docker image.
 
 - The network is tiny and trained on a synthetic shape task; it demonstrates mechanisms
   (convolution, pooling, backprop, translation invariance), not image recognition at scale.
-- Convolution in interpreted Python is slow; training is seconds on tiny images, not a substitute for an
-  optimized kernel.
+- Convolution is im2col plus a numpy matrix product on one image at a time; there is no batching,
+  GPU support or optimized convolution algorithm (such as Winograd), so it is not a substitute for
+  a tensor library.
 - A single convolutional layer and one pooling stage keep the network legible rather than deep.
 
 ## Roadmap

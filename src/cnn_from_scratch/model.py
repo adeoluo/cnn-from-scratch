@@ -6,6 +6,8 @@ import math
 import random
 from dataclasses import dataclass
 
+import numpy as np
+
 from cnn_from_scratch.layers import Conv2D, Dense, Flatten, Layer, MaxPool2D, Param, ReLU
 
 Vector = list[float]
@@ -28,7 +30,8 @@ class Sequential:
         out: object = x
         for layer in self.layers:
             out = layer.forward(out)
-        return out  # type: ignore[return-value]
+        logits: Vector = np.asarray(out, dtype=np.float64).tolist()
+        return logits
 
     def backward(self, grad: Vector) -> None:
         g: object = grad
