@@ -2,7 +2,8 @@
 
 ## Overview
 - **What it is:** a from-scratch convolutional neural network with explicit backpropagation,
-  trained on a synthetic oriented-stroke classification task. No numerical libraries.
+  trained on a synthetic oriented-stroke classification task. Every forward and backward pass is
+  written by hand.
 - **Base model:** none. Parameters are initialized and trained from scratch.
 - **Version and date:** 0.1.0, 2026.
 
@@ -13,7 +14,7 @@
 
 ## Out-of-scope / prohibited use
 - Not an image recognizer for real photographs; the task is synthetic shapes.
-- Not a performance reference; pure-Python convolution is slow by design.
+- Not a performance reference; convolution in interpreted Python is slow by design.
 - The accuracy numbers describe a shape task and must not be cited as an image benchmark.
 
 ## Performance
@@ -23,7 +24,7 @@
 
 ## Limitations and failure modes
 - Tiny, single-block network on small synthetic images; no claims about scale or natural images.
-- Pure-Python convolution is slow; not a substitute for an optimized kernel.
+- Convolution in interpreted Python is slow; not a substitute for an optimized kernel.
 
 ## Ethical considerations
 - No personal data, no network access, no external model. Inputs are synthetic grayscale images.

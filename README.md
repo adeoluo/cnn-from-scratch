@@ -1,16 +1,14 @@
 <h1 align="center">CNN From Scratch</h1>
 
 <p align="center">
-  <em>A convolutional neural network and its reverse-mode backpropagation, built from scratch in pure Python with no numerical libraries. Every gradient is verified against finite differences.</em>
+  <em>A convolutional neural network and its reverse-mode backpropagation, built from scratch in Python with every forward and backward pass written by hand and every gradient verified against finite differences.</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/adeoluo/cnn-from-scratch/actions/workflows/ci.yml"><img alt="Continuous integration" src="https://github.com/adeoluo/cnn-from-scratch/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Coverage" src="https://img.shields.io/badge/coverage-97%25-brightgreen">
+  <a href="https://github.com/adeoluo/cnn-from-scratch/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/adeoluo/cnn-from-scratch/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/adeoluo/cnn-from-scratch/releases"><img alt="Release" src="https://img.shields.io/github/v/release/adeoluo/cnn-from-scratch"></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%20%7C%203.12-blue">
-  <img alt="Type checked" src="https://img.shields.io/badge/mypy-strict-blue">
-  <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-brightgreen">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
 ---
@@ -22,7 +20,7 @@ slides across an image, how gradients flow back through convolution and pooling,
 convolution generalizes across position when a dense layer does not. This project removes the
 framework. It implements **Conv2D, ReLU, MaxPool2D, Flatten, and Dense** layers with explicit
 forward and backward passes, an **Adam optimizer** from scratch, and a softmax cross-entropy
-loss, with **zero runtime dependencies** and no automatic differentiation.
+loss, with no automatic differentiation.
 
 Correctness is checked, not asserted: every layer's backward pass is compared to a
 finite-difference estimate and they agree to within `1e-4`. The network is then trained on a
@@ -31,14 +29,16 @@ task designed so that **convolution matters** and a linear model fails.
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture/architecture.svg" alt="System architecture" width="900">
+  <img src="docs/architecture/architecture.svg" alt="Architecture diagram" width="860">
 </p>
 
 Each layer caches what its backward pass needs during the forward pass; `Sequential` chains them
 and propagates the gradient in reverse. Training uses an Adam optimizer written from scratch. See
 the [ADRs](docs/adr/) for the key decisions.
 
-## The task: why convolution wins
+## Results
+
+### The task: why convolution wins
 
 Each image places a short oriented stroke (horizontal, vertical, or diagonal) at a **random
 position** on a noisy background. The class is the orientation. Because the discriminative motif
@@ -46,7 +46,7 @@ can appear anywhere, a linear model on raw pixels cannot pin it down, while a co
 filter detects it regardless of position. This isolates the property that makes convolution
 valuable: **translation invariance**.
 
-## Results
+### Accuracy against a linear baseline
 
 > Reproduce with `python -m cnn_from_scratch train`. Default: 8x8 images, one conv layer of 6
 > filters, 2x2 max pooling, trained 15 epochs on CPU in a few seconds. Held-out split is disjoint
@@ -79,18 +79,14 @@ with the image set. Run with `uv run python benchmarks/scale.py`.
 | 3000 | 7.22 | 415.3 | 7.52 | 0.981 |
 | 6000 | 16.52 | 363.2 | 15.04 | 0.983 |
 
-Honest caveat: the data is synthetic, the network is deliberately small, and this pure-Python
+Honest caveat: the data is synthetic, the network is deliberately small, and this Python
 implementation is not benchmarked against compiled tensor libraries.
 
-## Demonstration
+### Evaluation
 
-```text
-$ python -m cnn_from_scratch train
-Trained 15 epochs on the oriented-stroke task (3 classes).
-  convolutional network: accuracy=0.9667 (87/90)
-  logistic-regression baseline: accuracy=0.3889
-  mean confidence in true class: 0.9440
-```
+Train and test splits are generated with seeded randomness and are disjoint. All runs are
+deterministic given a seed. Full method and tables:
+[`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md).
 
 ## Quickstart
 
@@ -104,7 +100,19 @@ python -m cnn_from_scratch evaluate     # accuracy and a confusion matrix
 python -m cnn_from_scratch serve        # start the HTTP service on :8000
 ```
 
-## HTTP service
+## Usage
+
+### Demonstration
+
+```text
+$ python -m cnn_from_scratch train
+Trained 15 epochs on the oriented-stroke task (3 classes).
+  convolutional network: accuracy=0.9667 (87/90)
+  logistic-regression baseline: accuracy=0.3889
+  mean confidence in true class: 0.9440
+```
+
+### HTTP service
 
 A standard-library HTTP service trains once at startup, then classifies images. The routing logic
 is a pure function, tested without a socket. Under a concurrent stress benchmark
@@ -132,11 +140,26 @@ curl -s localhost:8000/classify -d '{"image": [[0,0,0,0,0,0,0,0], ... ]}'
   what forces convolution to matter; a fixed-position task is solved just as well by a linear
   model. See [ADR 0003](docs/adr/0003-translation-task.md).
 
-## Evaluation
+## Testing
 
-Train and test splits are generated with seeded randomness and are disjoint. All runs are
-deterministic given a seed. Full method and tables:
-[`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md).
+```bash
+make test                     # or: uv run pytest
+uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+```
+
+The suite in `tests/` is seeded and deterministic:
+
+- `test_gradients.py`: a gradient check of the full network against finite differences,
+  and a check that the random seed changes initialization.
+- `test_model.py`: output shapes of Conv2D, MaxPool2D, Flatten, and Dense, ReLU behavior,
+  dataset balance and shape, deterministic training, confidence bounds, and the headline
+  property that the CNN beats the linear baseline.
+- `test_service_cli.py`: the HTTP handler layer (`/health`, `/ready`, `/classify`,
+  `/evaluate`, `/metrics`, validation, unknown routes) and the CLI commands.
+
+CI (`.github/workflows/ci.yml`) runs `ruff format --check`, `ruff check`, `mypy src`, and
+`pytest` with an 80% coverage gate on Python 3.11 and 3.12, then builds the package and the
+Docker image.
 
 ## Responsible AI
 
@@ -148,7 +171,7 @@ deterministic given a seed. Full method and tables:
 
 - The network is tiny and trained on a synthetic shape task; it demonstrates mechanisms
   (convolution, pooling, backprop, translation invariance), not image recognition at scale.
-- Pure-Python convolution is slow; training is seconds on tiny images, not a substitute for an
+- Convolution in interpreted Python is slow; training is seconds on tiny images, not a substitute for an
   optimized kernel.
 - A single convolutional layer and one pooling stage keep the network legible rather than deep.
 
@@ -160,4 +183,4 @@ deterministic given a seed. Full method and tables:
 
 ## License
 
-[MIT](LICENSE)
+Released under the [MIT License](LICENSE).

@@ -9,8 +9,8 @@ measured without tracemalloc (which otherwise slows every allocation); peak
 memory is traced separately around the dataset plus a single forward pass, which
 is faithful because ``evaluate`` processes one image at a time and discards each.
 
-The data is synthetic and the network is intentionally small. This pure-Python
-from-scratch implementation is not competitive on wall-clock time with compiled
+The data is synthetic and the network is intentionally small. This from-scratch Python
+implementation is not competitive on wall-clock time with compiled
 tensor libraries; the goal is to show how the hand-written convolution forward
 pass scales with the number of images. Deterministic and offline; run with:
 
@@ -91,7 +91,7 @@ def run_scale(sizes: tuple[int, ...] = WORKLOAD_SIZES, *, epochs: int = 15) -> l
 
 def main() -> None:
     print("Synthetic oriented-stroke images; small from-scratch CNN.")
-    print("Pure-Python inference; not benchmarked against compiled tensor libraries.")
+    print("Interpreted-Python inference; not benchmarked against compiled tensor libraries.")
     print(f"{'images':>8}  {'seconds':>9}  {'img/sec':>9}  {'peak MiB':>9}  {'accuracy':>9}")
     for row in run_scale():
         print(

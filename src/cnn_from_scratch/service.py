@@ -1,4 +1,4 @@
-"""A dependency-free HTTP service exposing the trained convolutional classifier.
+"""A standard-library HTTP service exposing the trained convolutional classifier.
 
 The service trains the network once at startup, then classifies images and
 reports held-out accuracy. The routing logic is a pure function tested without a
