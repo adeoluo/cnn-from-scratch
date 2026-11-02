@@ -42,4 +42,4 @@ def test_random_seed_changes_initialization() -> None:
     cfg = CNNConfig(image_size=8, n_classes=3)
     a = build_cnn(cfg, seed=0).parameters()[0].values
     b = build_cnn(cfg, seed=1).parameters()[0].values
-    assert a != b
+    assert a.tolist() != b.tolist()

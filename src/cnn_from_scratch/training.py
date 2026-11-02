@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from cnn_from_scratch.data import ImageTask, train_data
 from cnn_from_scratch.layers import Param
 from cnn_from_scratch.model import CNNConfig, Sequential, build_cnn, cross_entropy_grad
@@ -30,24 +32,21 @@ class Adam:
         self.params = params
         self.cfg = cfg
         self.t = 0
-        self.m = [[0.0] * len(p.values) for p in params]
-        self.v = [[0.0] * len(p.values) for p in params]
+        self.m = [np.zeros_like(p.values) for p in params]
+        self.v = [np.zeros_like(p.values) for p in params]
 
     def step(self) -> None:
         cfg = self.cfg
         self.t += 1
         b1t = 1.0 - cfg.beta1**self.t
         b2t = 1.0 - cfg.beta2**self.t
-        for idx, p in enumerate(self.params):
-            m = self.m[idx]
-            v = self.v[idx]
-            for i in range(len(p.values)):
-                g = p.grad[i]
-                m[i] = cfg.beta1 * m[i] + (1.0 - cfg.beta1) * g
-                v[i] = cfg.beta2 * v[i] + (1.0 - cfg.beta2) * g * g
-                m_hat = m[i] / b1t
-                v_hat = v[i] / b2t
-                p.values[i] -= cfg.learning_rate * m_hat / ((v_hat**0.5) + cfg.eps)
+        for p, m, v in zip(self.params, self.m, self.v, strict=True):
+            g = p.grad
+            m *= cfg.beta1
+            m += (1.0 - cfg.beta1) * g
+            v *= cfg.beta2
+            v += (1.0 - cfg.beta2) * g * g
+            p.values -= cfg.learning_rate * (m / b1t) / (np.sqrt(v / b2t) + cfg.eps)
 
 
 @dataclass
