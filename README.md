@@ -136,6 +136,22 @@ roughly **1,400 requests/second** at **p50 0.32 ms, p95 2.7 ms**.
 curl -s localhost:8000/classify -d '{"image": [[0,0,0,0,0,0,0,0], ... ]}'
 ```
 
+### Demos
+
+Recorded from real runs with [vhs](https://github.com/charmbracelet/vhs); each tape is in `docs/demo/`.
+
+Training the from-scratch CNN and the accuracy it reaches.
+
+<p align="center">
+  <img src="docs/demo/train.gif" alt="Training the from-scratch CNN and the accuracy it reaches" width="860">
+</p>
+
+Held-out evaluation with per-class results.
+
+<p align="center">
+  <img src="docs/demo/evaluate.gif" alt="Held-out evaluation with per-class results" width="860">
+</p>
+
 ## Design decisions
 
 - **Explicit per-layer backward, not a general autodiff graph** - for a convolutional network,
