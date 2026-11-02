@@ -32,8 +32,13 @@ task designed so that **convolution matters** and a linear model fails.
   <img src="docs/architecture/architecture.svg" alt="Architecture diagram" width="860">
 </p>
 
+<sub>Legend: amber = entry points and external systems, indigo = core logic, green = data and state, blue = validation and control, grey = observability and outputs.</sub>
+
 Each layer caches what its backward pass needs during the forward pass; `Sequential` chains them
-and propagates the gradient in reverse. Training uses an Adam optimizer written from scratch. See
+and propagates the gradient in reverse. Training uses an Adam optimizer written from scratch on seeded oriented-stroke images. The HTTP
+service trains once at startup, validates each 8x8 image, and returns the softmax probabilities;
+evaluation reports accuracy and a confusion matrix on a disjoint test set next to a logistic
+regression baseline. See
 the [ADRs](docs/adr/) for the key decisions.
 
 ## Results

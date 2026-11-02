@@ -1,45 +1,61 @@
-flowchart TD
+flowchart LR
     classDef edge     fill:#F59E0B,stroke:#1E293B,color:#1E293B,stroke-width:1px;
     classDef core     fill:#6366F1,stroke:#1E293B,color:#ffffff,stroke-width:1px;
     classDef data     fill:#10B981,stroke:#1E293B,color:#ffffff,stroke-width:1px;
     classDef control  fill:#0EA5E9,stroke:#1E293B,color:#ffffff,stroke-width:1px;
     classDef obs      fill:#CBD5E1,stroke:#1E293B,color:#1E293B,stroke-width:1px;
 
-    Client([Client]):::edge
+    Client(["HTTP client"]):::edge
+    CLI(["CLI<br/>train, evaluate, serve"]):::edge
 
-    subgraph Net["Convolutional classifier (explicit forward and backward per layer)"]
+    subgraph Interfaces["Interfaces (stdlib HTTP service)"]
         direction TB
-        Conv["Conv2D + ReLU<br/>sliding filters, valid convolution"]:::core
-        Pool["MaxPool2D<br/>argmax cached for backward"]:::core
-        Flat["Flatten"]:::core
-        Dense["Dense + softmax"]:::core
+        Router["Router<br/>/health, /ready, /metrics,<br/>/classify, /evaluate"]:::edge
+        Validate["Validation<br/>8x8 numeric image"]:::control
     end
 
-    subgraph TrainLoop["Training (once at startup)"]
+    subgraph Training["Training (once at startup)"]
         direction TB
-        Data[(Oriented-stroke images<br/>random positions, seeded, disjoint splits)]:::data
-        Loss["Cross-entropy gradient"]:::control
+        Loss["Cross-entropy gradient<br/>on softmax logits"]:::core
         Adam["Adam optimizer<br/>from scratch"]:::control
     end
 
-    Weights[(Conv + dense weights)]:::data
-
-    subgraph Edge["Service layer (stdlib HTTP, stateless)"]
+    subgraph Net["Sequential CNN (forward caches, reverse backward)"]
         direction TB
-        Router["Router<br/>/health | /ready | /metrics | /classify | /evaluate"]:::core
-        Validate["Validation<br/>fixed-size numeric image"]:::control
+        Conv["Conv2D + ReLU<br/>6 filters, 3x3, He init"]:::core
+        Pool["MaxPool2D<br/>argmax cached"]:::core
+        Dense["Flatten + Dense<br/>logits per class"]:::core
     end
 
-    Result["Predicted class + probabilities"]:::obs
+    subgraph State["Data and state (in memory, seeded)"]
+        direction TB
+        TrainData[("Training images<br/>oriented strokes, noise")]:::data
+        TestData[("Test images<br/>disjoint seed")]:::data
+        Params[("Parameters<br/>conv and dense weights + grads")]:::data
+    end
 
-    Conv --> Pool --> Flat --> Dense
-    Data --> Net
-    Dense -->|logits| Loss --> Adam -->|updates| Weights
-    Net -.->|backward| Loss
-    Net -.-> Weights
+    subgraph Evaluation["Evaluation and outputs"]
+        direction TB
+        Probs["Prediction<br/>class + softmax probabilities"]:::obs
+        Report["EvalReport<br/>accuracy, confusion matrix"]:::obs
+        Baseline["Logistic regression<br/>linear baseline"]:::obs
+        Metrics["ServiceMetrics<br/>Prometheus"]:::obs
+    end
 
-    Client -->|JSON image| Router --> Validate
-    Validate -->|image| Net
-    Weights -.-> Net
-    Net -->|probabilities| Result
-    Result --> Router -->|JSON response| Client
+    Client -->|JSON image| Router
+    CLI -->|serve| Router
+    CLI -->|train, evaluate| Loss
+    Router --> Validate
+    Validate -->|image| Conv
+    Loss -->|backward| Conv
+    Adam -.->|step| Params
+    Conv --> Pool
+    Pool --> Dense
+    Conv -.-> Params
+    Dense -.-> Params
+    Loss -.->|reads| TrainData
+    Dense -->|logits| Probs
+    Dense -->|test logits| Report
+    Report -.->|reads| TestData
+    Baseline -.->|reads| TestData
+    Router -.-> Metrics
