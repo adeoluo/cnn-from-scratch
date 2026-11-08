@@ -1,10 +1,22 @@
 cff-version: 1.2.0
-message: "If you use this work, please cite it."
-title: "Cnn From Scratch"
+message: "If you use this software, please cite it as below."
+type: software
+title: "CNN From Scratch"
+abstract: "A convolutional neural network and its explicit backpropagation (conv2d, pooling, dense), built from scratch in Python; gradients verified against finite differences and translation invariance demonstrated against a linear baseline."
 authors:
   - family-names: "Ogunnoiki"
     given-names: "Adeolu"
-version: 0.1.0
-date-released: 2026-01-01
+version: "0.1.0"
+date-released: "2026-11-03"
 license: MIT
+repository-code: "https://github.com/adeoluo/cnn-from-scratch"
 url: "https://github.com/adeoluo/cnn-from-scratch"
+keywords:
+  - "autograd"
+  - "backpropagation"
+  - "cnn"
+  - "computer-vision"
+  - "convolutional-neural-network"
+  - "deep-learning"
+  - "from-scratch"
+  - "python"
