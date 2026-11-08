@@ -3,9 +3,17 @@ name = "cnn-from-scratch"
 version = "0.1.0"
 description = "A convolutional neural network and its reverse-mode autodiff built from scratch in Python, with hand-written forward and backward passes"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Adeolu Ogunnoiki" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+]
 dependencies = ["numpy>=1.26"]
 
 [dependency-groups]
@@ -28,7 +36,7 @@ packages = ["src/cnn_from_scratch"]
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -39,7 +47,7 @@ ignore = []
 known-first-party = ["cnn_from_scratch"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unused_configs = true
 disallow_untyped_defs = true
